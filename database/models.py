@@ -19,6 +19,7 @@ from sqlalchemy import (
     Column, Integer, String, Text, DateTime, JSON, Float,
     ForeignKey, create_engine, event,
 )
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import (
     DeclarativeBase, relationship, sessionmaker, Session,
 )
@@ -295,7 +296,29 @@ def get_engine():
                 cursor.execute("PRAGMA busy_timeout=5000")
                 cursor.execute("PRAGMA synchronous=NORMAL")
                 cursor.close()
-        Base.metadata.create_all(_engine)
+
+        # P26 #25 (2026-05-04): create tables one-by-one with explicit
+        # `checkfirst=True` instead of `Base.metadata.create_all(_engine)`.
+        # Pre-fix: the bulk create_all call was crashing on Render-style
+        # persistent-disk deploys with `OperationalError: table
+        # pipeline_runs already exists`, even though create_all docs say
+        # checkfirst is True by default. Looping per-table and catching
+        # the "already exists" sqlite error makes startup truly idempotent
+        # against any pre-existing DB layout. Migrations (apply_all) run
+        # immediately after this in the lifespan to add any missing
+        # columns the model picked up since the DB was created.
+        for _table in Base.metadata.sorted_tables:
+            try:
+                _table.create(_engine, checkfirst=True)
+            except OperationalError as _exc:
+                _msg = str(_exc).lower()
+                if "already exists" in _msg:
+                    _db_log.info(
+                        "schema.table_exists name=%s — skipping create",
+                        _table.name,
+                    )
+                    continue
+                raise
     return _engine
 
 
