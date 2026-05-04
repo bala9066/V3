@@ -31,9 +31,13 @@ RUN mkdir -p output chroma_data logs
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Health check — FastAPI
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Health check — FastAPI. Uses ${PORT:-8000} so the in-container
+# health check matches what start-prod.sh actually binds to (Render /
+# Fly / Railway inject $PORT). start-period bumped to 60s because the
+# chromadb daemon thread + opentelemetry instrumentation extend cold
+# startup past 30s on small instances.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f "http://localhost:${PORT:-8000}/health" || exit 1
 
 EXPOSE 8000
 
