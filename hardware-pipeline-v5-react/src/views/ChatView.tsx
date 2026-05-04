@@ -3334,9 +3334,23 @@ export default function ChatView({ project, phase, phaseStatus, pipelineStarted,
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       const isNetworkErr = !msg.startsWith('HTTP ');
-      const display = isNetworkErr
-        ? '⚠️ Cannot reach the backend.\n\nDouble-click **run.bat** in the project folder and wait for "Application startup complete", then try again.'
-        : `⚠️ Server error — ${msg}\n\nCheck the uvicorn terminal window for the full traceback.`;
+      // P26 #28 (2026-05-04): error message used to hard-code "double-click
+      // run.bat" which was nonsense for users hitting a deployed instance
+      // (Render, Fly, Railway, etc.). Detect non-localhost hosts and show
+      // hosting-aware advice + the actual underlying error so the user can
+      // see the real cause (timeout, 502, CORS, DNS).
+      const isLocalDev =
+        typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost'
+          || window.location.hostname === '127.0.0.1');
+      let display: string;
+      if (isNetworkErr) {
+        display = isLocalDev
+          ? `⚠️ Cannot reach the backend (${msg}).\n\nDouble-click **run.bat** and wait for "Application startup complete", then try again.`
+          : `⚠️ Cannot reach the backend (${msg}).\n\nThe server may be sleeping (free tier wakes in 30-60s) or the request timed out. Wait a moment and click Retry. If it keeps failing, check the Render service logs.`;
+      } else {
+        display = `⚠️ Server error — ${msg}\n\nCheck the server logs for the full traceback.`;
+      }
       onMessages([...updated, { role: 'ai', text: display, id: newMsgId() }]);
       setStreaming('');
       setLoading(false);
