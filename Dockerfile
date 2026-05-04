@@ -13,8 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright (chromium only — smaller image)
-RUN playwright install chromium && playwright install-deps chromium
+# P26 #24 (2026-05-04): removed `playwright install chromium` step.
+# Playwright is NOT in requirements.txt (pip install fails with "command
+# not found"), and the only consumer is `tests/test_ui_playwright.py`
+# which uses `pytest.importorskip` — production runtime never touches a
+# headless browser. Mermaid renders via mmdc (Node) + the shared
+# `_render_mermaid_local` chain. Including Chromium would have added
+# ~300 MB to the image for zero production benefit.
 
 # Copy application code
 COPY . .
